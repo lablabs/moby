@@ -133,6 +133,7 @@ func (d *driver) NetworkFree(id string) error {
 }
 
 func (d *driver) CreateNetwork(id string, option map[string]interface{}, nInfo driverapi.NetworkInfo, ipV4Data, ipV6Data []driverapi.IPAMData) error {
+	logrus.Debugf("Enter Overlay->ov_network->CreateNetwork: id: %s", id)
 	if id == "" {
 		return fmt.Errorf("invalid network id")
 	}
@@ -201,6 +202,7 @@ func (d *driver) CreateNetwork(id string, option map[string]interface{}, nInfo d
 		n.subnets = append(n.subnets, s)
 	}
 
+	logrus.Debugf("Lock Overlay->ov_network->CreateNetwork->Lock: id: %s", id)
 	d.Lock()
 	defer d.Unlock()
 	if d.networks[n.id] != nil {
@@ -228,10 +230,13 @@ func (d *driver) CreateNetwork(id string, option map[string]interface{}, nInfo d
 
 	d.networks[id] = n
 
+	logrus.Debugf("Leave Overlay->ov_network->CreateNetwork: id: %s", id)
+	logrus.Debugf("UnLock Overlay->ov_network->CreateNetwork->Lock: id: %s", id)
 	return nil
 }
 
 func (d *driver) DeleteNetwork(nid string) error {
+	logrus.Debugf("Entry Overlay->ov_network->DeleteNetwork: id: %s", nid)
 	if nid == "" {
 		return fmt.Errorf("invalid network id")
 	}
@@ -241,15 +246,20 @@ func (d *driver) DeleteNetwork(nid string) error {
 		return err
 	}
 
+	logrus.Debugf("Lock Overlay->ov_network->DeleteNetwork->Lock: id: %s", nid)
 	d.Lock()
 	// Only perform a peer flush operation (if required) AFTER unlocking
 	// the driver lock to avoid deadlocking w/ the peerDB.
 	var doPeerFlush bool
 	defer func() {
 		d.Unlock()
+		logrus.Debugf("Leave with Unlock Overlay->ov_network->DeleteNetwork: id: %s", nid)
 		if doPeerFlush {
+			logrus.Debugf("Leave before Overlay->ov_network->DeleteNetwork->doPeerFlush: id: %s", nid)
 			d.peerFlush(nid)
+			logrus.Debugf("Leave after Overlay->ov_network->DeleteNetwork->doPeerFlush: id: %s", nid)
 		}
+		logrus.Debugf("Leave Overlay->ov_network->DeleteNetwork: id: %s", nid)
 	}()
 
 	// This is similar to d.network(), but we need to keep holding the lock
@@ -291,6 +301,7 @@ func (d *driver) DeleteNetwork(nid string) error {
 		}
 	}
 
+	logrus.Debugf("Leave Overlay->ov_network->CreateNetwork: id: %s", nid)
 	return nil
 }
 
@@ -307,6 +318,7 @@ func (n *network) joinSandbox(s *subnet, restore bool, incJoinCount bool) error 
 	// the other will wait.
 	networkOnce.Do(networkOnceInit)
 
+	logrus.Debugf("Enter with Lock Overlay->ov_network->joinSandbox: nid: %s ,subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 	n.Lock()
 	// If non-restore initialization occurred and was successful then
 	// tell the peerDB to initialize the sandbox with all the peers
@@ -315,14 +327,19 @@ func (n *network) joinSandbox(s *subnet, restore bool, incJoinCount bool) error 
 	// on the peerDB channel while peerDB is waiting for the network lock.
 	var doInitPeerDB bool
 	defer func() {
+		logrus.Debugf("Leave with Unlock Overlay->ov_network->joinSandbox: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 		n.Unlock()
 		if doInitPeerDB {
+			logrus.Debugf("Leave before Unlock Overlay->ov_network->joinSandbox->initSandboxPeerDB: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 			n.driver.initSandboxPeerDB(n.id)
+			logrus.Debugf("Leave before Unlock Overlay->ov_network->joinSandbox->initSandboxPeerDB: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 		}
 	}()
 
 	if !n.sboxInit {
+		logrus.Debugf("Enter Overlay->ov_network->joinSandbox->initSandbox: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 		n.initErr = n.initSandbox(restore)
+		logrus.Debugf("Leave Overlay->ov_network->joinSandbox->initSandbox: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 		doInitPeerDB = n.initErr == nil && !restore
 		// If there was an error, we cannot recover it
 		n.sboxInit = true
@@ -349,18 +366,23 @@ func (n *network) joinSandbox(s *subnet, restore bool, incJoinCount bool) error 
 		n.joinCnt++
 	}
 
+	logrus.Debugf("Leave Overlay->ov_network->joinSandbox: nid: %s, subnet: %q, restore: %t, incJoinCount: %v", n.id, s.subnetIP.String(), restore, incJoinCount)
 	return nil
 }
 
 func (n *network) leaveSandbox() {
+	logrus.Debugf("Enter with Lock Overlay->ov_network->leaveSandbox: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 	n.Lock()
 	defer n.Unlock()
 	n.joinCnt--
 	if n.joinCnt != 0 {
+		logrus.Debugf("Leave with UnLock Overlay->ov_network->leaveSandbox->joinCnt: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 		return
 	}
 
+	logrus.Debugf("Before Overlay->ov_network->leaveSandbox->destroySandbox: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 	n.destroySandbox()
+	logrus.Debugf("After Overlay->ov_network->leaveSandbox->destroySandbox: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 
 	n.sboxInit = false
 	n.initErr = nil
@@ -372,6 +394,7 @@ func (n *network) leaveSandbox() {
 
 // to be called while holding network lock
 func (n *network) destroySandbox() {
+	logrus.Debugf("Enter Overlay->ov_network->leaveSandbox: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 	if n.sbox != nil {
 		for _, iface := range n.sbox.Info().Interfaces() {
 			if err := iface.Remove(); err != nil {
@@ -409,6 +432,8 @@ func (n *network) destroySandbox() {
 		n.sbox.Destroy()
 		n.sbox = nil
 	}
+
+	logrus.Debugf("Leave Overlay->ov_network->leaveSandbox: nid: %s, incJoinCount: %v", n.id, n.joinCnt)
 }
 
 func populateVNITbl() {

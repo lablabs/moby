@@ -14,6 +14,7 @@ import (
 
 // Join method is invoked when a Sandbox is attached to an endpoint.
 func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo, options map[string]interface{}) error {
+	logrus.Debugf("Entry Overlay->joinleave->Join: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
@@ -112,7 +113,9 @@ func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo,
 		}
 	}
 
+	logrus.Debugf("Before Overlay->joinleave->peerAdd: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 	d.peerAdd(nid, eid, ep.addr.IP, ep.addr.Mask, ep.mac, net.ParseIP(d.advertiseAddress), false, false, true)
+	logrus.Debugf("After Overlay->joinleave->peerAdd: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 
 	if err = d.checkEncryption(nid, nil, n.vxlanID(s), true, true); err != nil {
 		logrus.Warn(err)
@@ -131,8 +134,11 @@ func (d *driver) Join(nid, eid string, sboxKey string, jinfo driverapi.JoinInfo,
 		logrus.Errorf("overlay: Failed adding table entry to joininfo: %v", err)
 	}
 
+	logrus.Debugf("Before Overlay->joinleave->pushLocalEndpointEvent: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 	d.pushLocalEndpointEvent("join", nid, eid)
+	logrus.Debugf("After Overlay->joinleave->pushLocalEndpointEvent: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 
+	logrus.Debugf("Leave Overlay->joinleave->Join: id: %s, eid: %s, sboxkey: %s", nid, eid, sboxKey)
 	return nil
 }
 
@@ -154,6 +160,7 @@ func (d *driver) DecodeTableEntry(tablename string, key string, value []byte) (s
 }
 
 func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key string, value []byte) {
+	logrus.Debugf("Entry Overlay->joinleave->EventNotify: id: %s, tableName: %s", nid, tableName)
 	if tableName != ovPeerTable {
 		logrus.Errorf("Unexpected table notification for table %s received", tableName)
 		return
@@ -170,6 +177,7 @@ func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key stri
 	// Ignore local peers. We already know about them and they
 	// should not be added to vxlan fdb.
 	if peer.TunnelEndpointIP == d.advertiseAddress {
+		logrus.Debugf("Leave Overlay->joinleave->EventNotify->peer.TunnelEndpointIP: id: %s, tableName: %s", nid, tableName)
 		return
 	}
 
@@ -192,15 +200,24 @@ func (d *driver) EventNotify(etype driverapi.EventType, nid, tableName, key stri
 	}
 
 	if etype == driverapi.Delete {
+		logrus.Debugf("Before Overlay->joinleave->EventNotify->peerDelete: id: %s, tableName: %s, eid: %s, peerIP: %v", nid, tableName, eid, addr.IP)
 		d.peerDelete(nid, eid, addr.IP, addr.Mask, mac, vtep, false)
+		logrus.Debugf("After Overlay->joinleave->EventNotify->peerDelete: id: %s, tableName: %s, eid: %s, peerIP: %v", nid, tableName, eid, addr.IP)
+
+		logrus.Debugf("Leave Overlay->joinleave->EventNotify->driverapi.Delete: id: %s, tableName: %s", nid, tableName)
 		return
 	}
 
+	logrus.Debugf("Before Overlay->joinleave->EventNotify->peerAdd: id: %s, tableName: %s, eid: %s, peerIP: %v", nid, tableName, eid, addr.IP)
 	d.peerAdd(nid, eid, addr.IP, addr.Mask, mac, vtep, false, false, false)
+	logrus.Debugf("After Overlay->joinleave->EventNotify->peerAdd: id: %s, tableName: %s, eid: %s, peerIP: %v", nid, tableName, eid, addr.IP)
+
+	logrus.Debugf("Leave Overlay->joinleave->EventNotify: id: %s, tableName: %s", nid, tableName)
 }
 
 // Leave method is invoked when a Sandbox detaches from an endpoint.
 func (d *driver) Leave(nid, eid string) error {
+	logrus.Debugf("Entry Overlay->joinleave->Leave: id: %s, eid: %s", nid, eid)
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
@@ -217,16 +234,23 @@ func (d *driver) Leave(nid, eid string) error {
 	}
 
 	if d.notifyCh != nil {
+		logrus.Debugf("Before Overlay->joinleave->notifyCh: id: %s, eid: %s", nid, eid)
 		d.notifyCh <- ovNotify{
 			action: "leave",
 			nw:     n,
 			ep:     ep,
 		}
+		logrus.Debugf("After Overlay->joinleave->notifyCh: id: %s, eid: %s", nid, eid)
 	}
 
+	logrus.Debugf("Before Overlay->joinleave->Leave: id: %s, eid: %s, peerIP: %v", nid, eid, ep.addr.IP)
 	d.peerDelete(nid, eid, ep.addr.IP, ep.addr.Mask, ep.mac, net.ParseIP(d.advertiseAddress), true)
+	logrus.Debugf("After Overlay->joinleave->Leave: id: %s, eid: %s, peerIP: %v", nid, eid, ep.addr.IP)
 
+	logrus.Debugf("Before Overlay->joinleave->leaveSandbox: id: %s, eid: %s", nid, eid)
 	n.leaveSandbox()
+	logrus.Debugf("After Overlay->joinleave->leaveSandbox: id: %s, eid: %s", nid, eid)
 
+	logrus.Debugf("Leave Overlay->joinleave->Leave: id: %s, eid: %s", nid, eid)
 	return nil
 }

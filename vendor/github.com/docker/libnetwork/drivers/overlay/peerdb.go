@@ -247,7 +247,7 @@ func (d *driver) peerDbDelete(nid, eid string, peerIP net.IP, peerIPMask net.IPM
 // in one single atomic operation. This is fundamental to guarantee consistency, and avoid that
 // new peerAdd or peerDelete gets reordered during the sandbox init.
 func (d *driver) initSandboxPeerDB(nid string) {
-	d.peerInit(nid)
+	d.peerInitOp(nid)
 }
 
 type peerOperationType int32
@@ -282,13 +282,21 @@ func (d *driver) peerOpRoutine(ctx context.Context, ch chan *peerOperation) {
 		case op := <-ch:
 			switch op.opType {
 			case peerOperationINIT:
+				logrus.Debugf("Enter Overlay->peerdb->peerOpRoutine->peerOperationINIT: nid: %s, callerName: %v", op.networkID, op.callerName)
 				err = d.peerInitOp(op.networkID)
+				logrus.Debugf("Leave Overlay->peerdb->peerOpRoutine->peerOperationINIT: nid: %s, callerName: %v", op.networkID, op.callerName)
 			case peerOperationADD:
+				logrus.Debugf("Enter Overlay->peerdb->peerOpRoutine->peerOperationADD: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: true, callerName: %v", op.networkID, op.endpointID, op.peerIP, op.vtepIP, op.callerName)
 				err = d.peerAddOp(op.networkID, op.endpointID, op.peerIP, op.peerIPMask, op.peerMac, op.vtepIP, op.l2Miss, op.l3Miss, true, op.localPeer)
+				logrus.Debugf("Leave Overlay->peerdb->peerOpRoutine->peerOperationADD: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: true, callerName: %v", op.networkID, op.endpointID, op.peerIP, op.vtepIP, op.callerName)
 			case peerOperationDELETE:
+				logrus.Debugf("Enter Overlay->peerdb->peerOpRoutine->peerOperationDELETE: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t, callerName: %v", op.networkID, op.endpointID, op.peerIP, op.vtepIP, op.localPeer, op.callerName)
 				err = d.peerDeleteOp(op.networkID, op.endpointID, op.peerIP, op.peerIPMask, op.peerMac, op.vtepIP, op.localPeer)
+				logrus.Debugf("Leave Overlay->peerdb->peerOpRoutine->peerOperationDELETE: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t, callerName: %v", op.networkID, op.endpointID, op.peerIP, op.vtepIP, op.localPeer, op.callerName)
 			case peerOperationFLUSH:
+				logrus.Debugf("Enter Overlay->peerdb->peerOpRoutine->peerOperationFLUSH: nid: %s, callerName: %v", op.networkID, op.callerName)
 				err = d.peerFlushOp(op.networkID)
+				logrus.Debugf("Enter Overlay->peerdb->peerOpRoutine->peerOperationFLUSH: nid: %s, callerName: %v", op.networkID, op.callerName)
 			}
 			if err != nil {
 				logrus.Warnf("Peer operation failed:%s op:%v", err, op)
@@ -299,28 +307,35 @@ func (d *driver) peerOpRoutine(ctx context.Context, ch chan *peerOperation) {
 
 func (d *driver) peerInit(nid string) {
 	callerName := caller.Name(1)
+	logrus.Debugf("Enter Overlay->peerdb->peerInit: nid: %s, callerName: %v", nid, callerName)
 	d.peerOpCh <- &peerOperation{
 		opType:     peerOperationINIT,
 		networkID:  nid,
 		callerName: callerName,
 	}
+	logrus.Debugf("Leave Overlay->peerdb->peerInit: nid: %s, callerName: %v", nid, callerName)
 }
 
 func (d *driver) peerInitOp(nid string) error {
+	logrus.Debugf("Enter Overlay->peerdb->peerInitOp: nid: %s, callerName: %v", nid, caller.Name(0))
 	return d.peerDbNetworkWalk(nid, func(pKey *peerKey, pEntry *peerEntry) bool {
 		// Local entries do not need to be added
 		if pEntry.isLocal {
+			logrus.Debugf("Leave Overlay->peerdb->pEntry.isLocal: nid: %s, callerName: %v, pEntry: %v", nid, caller.Name(0), pEntry)
 			return false
 		}
 
+		logrus.Debugf("Overlay->peerdb->peerAddOp: nid: %s, callerName: %v, pEntry: %v", nid, caller.Name(0), pEntry)
 		d.peerAddOp(nid, pEntry.eid, pKey.peerIP, pEntry.peerIPMask, pKey.peerMac, pEntry.vtep, false, false, false, pEntry.isLocal)
 		// return false to loop on all entries
+		logrus.Debugf("Leave Overlay->peerdb->peerAddOp: nid: %s, callerName: %v, pEntry: %v", nid, caller.Name(0), pEntry)
 		return false
 	})
 }
 
 func (d *driver) peerAdd(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 	peerMac net.HardwareAddr, vtep net.IP, l2Miss, l3Miss, localPeer bool) {
+	logrus.Debugf("Enter Overlay->peerdb->peerAdd: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(1))
 	d.peerOpCh <- &peerOperation{
 		opType:     peerOperationADD,
 		networkID:  nid,
@@ -334,11 +349,12 @@ func (d *driver) peerAdd(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 		localPeer:  localPeer,
 		callerName: caller.Name(1),
 	}
+	logrus.Debugf("Leave Overlay->peerdb->peerAdd: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(1))
 }
 
 func (d *driver) peerAddOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 	peerMac net.HardwareAddr, vtep net.IP, l2Miss, l3Miss, updateDB, localPeer bool) error {
-
+	logrus.Debugf("Enter Overlay->peerdb->peerAdd: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
@@ -355,11 +371,13 @@ func (d *driver) peerAddOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask
 
 	// Local peers do not need any further configuration
 	if localPeer {
+		logrus.Debugf("Leave Overlay->peerdb->peerAdd->localPeer: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
 	n := d.network(nid)
 	if n == nil {
+		logrus.Debugf("Leave Overlay->peerdb->peerAdd->network: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
@@ -368,6 +386,7 @@ func (d *driver) peerAddOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask
 		// We are hitting this case for all the events that are arriving before that the sandbox
 		// is being created. The peer got already added into the database and the sanbox init will
 		// call the peerDbUpdateSandbox that will configure all these peers from the database
+		logrus.Debugf("Leave Overlay->peerdb->peerAdd->sandbox: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
@@ -399,6 +418,7 @@ func (d *driver) peerAddOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask
 			// We are in the transient case so only the first configuration is programmed into the kernel
 			// Upon deletion if the active configuration is deleted the next one from the database will be restored
 			// Note we are skipping also the next configuration
+			logrus.Debugf("Leave Overlay->peerdb->peerAdd->AddNeighbor: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 			return nil
 		}
 		return fmt.Errorf("could not add neighbor entry for nid:%s eid:%s into the sandbox:%v", nid, eid, err)
@@ -410,11 +430,13 @@ func (d *driver) peerAddOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask
 		return fmt.Errorf("could not add fdb entry for nid:%s eid:%s into the sandbox:%v", nid, eid, err)
 	}
 
+	logrus.Debugf("Leave Overlay->peerdb->peerAdd: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 	return nil
 }
 
 func (d *driver) peerDelete(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 	peerMac net.HardwareAddr, vtep net.IP, localPeer bool) {
+	logrus.Debugf("Enter Overlay->peerdb->peerDelete: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(1))
 	d.peerOpCh <- &peerOperation{
 		opType:     peerOperationDELETE,
 		networkID:  nid,
@@ -426,11 +448,12 @@ func (d *driver) peerDelete(nid, eid string, peerIP net.IP, peerIPMask net.IPMas
 		callerName: caller.Name(1),
 		localPeer:  localPeer,
 	}
+	logrus.Debugf("Leave Overlay->peerdb->peerDelete: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(1))
 }
 
 func (d *driver) peerDeleteOp(nid, eid string, peerIP net.IP, peerIPMask net.IPMask,
 	peerMac net.HardwareAddr, vtep net.IP, localPeer bool) error {
-
+	logrus.Debugf("Enter Overlay->peerdb->peerDeleteOp: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 	if err := validateID(nid, eid); err != nil {
 		return err
 	}
@@ -443,11 +466,13 @@ func (d *driver) peerDeleteOp(nid, eid string, peerIP net.IP, peerIPMask net.IPM
 
 	n := d.network(nid)
 	if n == nil {
+		logrus.Debugf("Leave Overlay->peerdb->peerDeleteOp->network: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
 	sbox := n.sandbox()
 	if sbox == nil {
+		logrus.Debugf("Leave Overlay->peerdb->peerDeleteOp->sandbox: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
@@ -462,6 +487,7 @@ func (d *driver) peerDeleteOp(nid, eid string, peerIP net.IP, peerIPMask net.IPM
 			if _, ok := err.(osl.NeighborSearchError); ok && dbEntries > 0 {
 				// We fall in here if there is a transient state and if the neighbor that is being deleted
 				// was never been configured into the kernel (we allow only 1 configuration at the time per <ip,mac> mapping)
+				logrus.Debugf("Leave Overlay->peerdb->peerDeleteOp->DeleteNeighbor: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 				return nil
 			}
 			return fmt.Errorf("could not delete fdb entry for nid:%s eid:%s into the sandbox:%v", nid, eid, err)
@@ -474,6 +500,7 @@ func (d *driver) peerDeleteOp(nid, eid string, peerIP net.IP, peerIPMask net.IPM
 	}
 
 	if dbEntries == 0 {
+		logrus.Debugf("Leave Overlay->peerdb->peerDeleteOp->dbEntries: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t , callerName: %v", nid, eid, peerIP, vtep, localPeer, caller.Name(0))
 		return nil
 	}
 
@@ -485,18 +512,23 @@ func (d *driver) peerDeleteOp(nid, eid string, peerIP net.IP, peerIPMask net.IPM
 		logrus.Errorf("peerDeleteOp unable to restore a configuration for nid:%s ip:%v mac:%v err:%s", nid, peerIP, peerMac, err)
 		return err
 	}
+
+	logrus.Debugf("Enter on Leave Overlay->peerdb->peerDeleteOp->peerAddOp: nid: %s, eid: %s, peerIP: %v, vtep: %v, localPeer: %t, peerEntry:%v, callerName: %v", nid, eid, peerIP, vtep, localPeer, peerEntry, caller.Name(0))
 	return d.peerAddOp(nid, peerEntry.eid, peerIP, peerEntry.peerIPMask, peerKey.peerMac, peerEntry.vtep, false, false, false, peerEntry.isLocal)
 }
 
 func (d *driver) peerFlush(nid string) {
+	logrus.Debugf("Enter Overlay->peerdb->peerFlush: nid: %s, callerName: %v", nid, caller.Name(1))
 	d.peerOpCh <- &peerOperation{
 		opType:     peerOperationFLUSH,
 		networkID:  nid,
 		callerName: caller.Name(1),
 	}
+	logrus.Debugf("Leave Overlay->peerdb->peerFlush: nid: %s, callerName: %v", nid, caller.Name(1))
 }
 
 func (d *driver) peerFlushOp(nid string) error {
+	logrus.Debugf("Enter Overlay->peerdb->peerFlushOp: nid: %s, callerName: %v", nid, caller.Name(0))
 	d.peerDb.Lock()
 	defer d.peerDb.Unlock()
 	_, ok := d.peerDb.mp[nid]
@@ -504,6 +536,7 @@ func (d *driver) peerFlushOp(nid string) error {
 		return fmt.Errorf("Unable to find the peerDB for nid:%s", nid)
 	}
 	delete(d.peerDb.mp, nid)
+	logrus.Debugf("Leave Overlay->peerdb->peerFlushOp: nid: %s, callerName: %v", nid, caller.Name(0))
 	return nil
 }
 
